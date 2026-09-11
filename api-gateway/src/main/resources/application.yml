@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        # ── Auth Service routes (no JWT required) ──────────────────
+        - id: auth-service
+          uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/api/auth/**
+
+        # ── Queue Service: public status endpoint (no JWT required) ─
+        - id: queue-status-public
+          uri: ${QUEUE_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/queue/status
+            - Method=GET
+
+        # ── Queue Service: customer endpoints (JWT required)
+        - id: queue-service
+          uri: ${QUEUE_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/queue/**
+          filters:
+            - name: JwtAuthFilter
+
+        # ── Queue Service: staff endpoints (JWT + STAFF role)
+        - id: staff-service
+          uri: ${QUEUE_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/staff/**
+          filters:
+            - name: JwtAuthFilter
+            - name: RoleFilter
+              args:
+                requiredRole: STAFF
+
+        # ── WebSocket passthrough
+        - id: websocket
+          uri: ws://queue-service:8082
+          predicates:
+            - Path=/ws/**
+
+      # ✅ เพิ่มตรงนี้ — บอก Gateway ให้รู้ว่ามี WebSocket
+      websocket-path-prefix-enabled: true
+
+jwt:
+  secret: ${JWT_SECRET:your-super-secret-key-change-this-in-production-min-256-bits}

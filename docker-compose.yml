@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+
+  mysql-auth:
+    image: mysql:8.0
+    container_name: mysql-auth
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: auth_db
+      MYSQL_USER: auth_user
+      MYSQL_PASSWORD: auth_pass
+    ports:
+      - "3308:3306"
+    volumes:
+      - mysql-auth-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql-queue:
+    image: mysql:8.0
+    container_name: mysql-queue
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: queue_db
+      MYSQL_USER: queue_user
+      MYSQL_PASSWORD: queue_pass
+    ports:
+      - "3309:3306"
+    volumes:
+      - mysql-queue-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-auth:3306/auth_db
+      SPRING_DATASOURCE_USERNAME: auth_user
+      SPRING_DATASOURCE_PASSWORD: auth_pass
+      JWT_SECRET: your-super-secret-key-change-this-in-production-min-256-bits
+      JWT_EXPIRATION_MS: 86400000
+    ports:
+      - "8081:8081"
+    depends_on:
+      mysql-auth:
+        condition: service_healthy
+
+  queue-service:
+    build: ./queue-service
+    container_name: queue-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-queue:3306/queue_db
+      SPRING_DATASOURCE_USERNAME: queue_user
+      SPRING_DATASOURCE_PASSWORD: queue_pass
+      JWT_SECRET: your-super-secret-key-change-this-in-production-min-256-bits
+    ports:
+      - "8082:8082"
+    depends_on:
+      mysql-queue:
+        condition: service_healthy
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      QUEUE_SERVICE_URL: http://queue-service:8082
+      JWT_SECRET: your-super-secret-key-change-this-in-production-min-256-bits
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - queue-service
+
+  frontend:
+    image: node:20-alpine
+    container_name: frontend
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_BASE: http://localhost:8080
+    depends_on:
+      - api-gateway
+
+volumes:
+  mysql-auth-data:
+  mysql-queue-data:
