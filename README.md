@@ -1,8 +1,20 @@
-# 🥢 Chinese Restaurant Queue System
+# 🥢 Restaurant Queue Management System
 
 A microservices-based queue management system built with Java 17, Spring Boot, Spring Cloud Gateway, MySQL, Docker, and WebSocket.
 
----
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | Java 21 |
+| Framework | Spring Boot 3.2.0 |
+| Gateway | Spring Cloud Gateway |
+| Security | Spring Security + JWT (jjwt) |
+| Database | MySQL 8 |
+| Real-time | Spring WebSocket (STOMP) |
+| Container | Docker + Docker Compose |
+| Build | Maven |
+| Frontend | React 18 + Vite |
 
 ## 📐 System Architecture
 
@@ -38,7 +50,7 @@ A microservices-based queue management system built with Java 17, Spring Boot, S
 
 ---
 
-## 📁 Folder Structure
+Folder Structure
 
 ```
 chinese-restaurant-queue/
@@ -126,7 +138,7 @@ chinese-restaurant-queue/
 
 ---
 
-## 🗄️ Database Schema
+## Database Schema
 
 ### auth_db
 
@@ -138,7 +150,7 @@ CREATE TABLE users (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY,
     username    VARCHAR(50) NOT NULL UNIQUE,
     email       VARCHAR(100) NOT NULL UNIQUE,
-    password    VARCHAR(255) NOT NULL,         -- BCrypt hashed
+    password    VARCHAR(255) NOT NULL, -- BCrypt hashed
     role        ENUM('CUSTOMER', 'STAFF') NOT NULL DEFAULT 'CUSTOMER',
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
