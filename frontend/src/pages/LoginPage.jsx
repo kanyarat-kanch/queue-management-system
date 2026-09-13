@@ -2,59 +2,80 @@ import { useState } from 'react'
 import { authApi, saveAuth } from '../services/api'
 
 export default function LoginPage({ onLogin }) {
-  // Controls whether the page displays login or registration form
   const [mode, setMode] = useState('login')
+  const [showPassword, setShowPassword] = useState(false)
 
-  // Form data for both login and registration
   const [form, setForm] = useState({
     username: '',
     email: '',
     password: '',
   })
 
-  // Error message returned from the API
   const [error, setError] = useState('')
-
-  // Prevents multiple submissions while the request is processing
+  const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
 
   const isLogin = mode === 'login'
 
-  // Update the selected form field when the user types
   const setField = (field) => (event) => {
     setForm((current) => ({ ...current, [field]: event.target.value }))
   }
 
-  // Switch between login and registration modes
   const changeMode = (nextMode) => {
     setMode(nextMode)
     setError('')
+    setSuccess('')
+    setShowPassword(false)
   }
 
-  // Handle login or registration submission
   const submit = async (event) => {
     event.preventDefault()
     setError('')
+    setSuccess('')
+
+    if (!isLogin) {
+      const passwordValid =
+        form.password.length >= 8 &&
+        /[A-Za-z]/.test(form.password) &&
+        /\d/.test(form.password)
+
+      if (!passwordValid) {
+        setError(
+          'Password must be at least 8 characters and contain at least one letter and one number.'
+        )
+        return
+      }
+    }
+
     setLoading(true)
 
     try {
-      // Use a different API endpoint depending on the current mode
-      const data = isLogin
-        ? await authApi.login({
-            username: form.username,
-            password: form.password,
-          })
-        : await authApi.register(form)
+      if (isLogin) {
+        const data = await authApi.login({
+          username: form.username,
+          password: form.password,
+        })
 
-      // Save authentication data and notify the parent component
-      saveAuth(data)
-      onLogin({
-        username: data.username,
-        role: data.role,
-        userId: data.userId,
-      })
+        saveAuth(data)
+
+        onLogin({
+          username: data.username,
+          role: data.role,
+        })
+      } else {
+        await authApi.register(form)
+
+        setForm({
+          username: form.username,
+          email: '',
+          password: '',
+        })
+
+        setMode('login')
+        setShowPassword(false)
+        setSuccess('Account created successfully. Please sign in.')
+      }
     } catch (requestError) {
-      // Display the error message returned by the API
       setError(requestError.message)
     } finally {
       setLoading(false)
@@ -66,11 +87,9 @@ export default function LoginPage({ onLogin }) {
       <section className="auth-card">
         <div className="auth-content">
 
-          {/* Customizable restaurant name or branding */}
           <div className="restaurant-label">Chinese Restaurant</div>
 
           <header className="auth-heading">
-            {/* Change these texts to customize the page heading */}
             <h1>{isLogin ? 'Welcome back' : 'Join the queue'}</h1>
             <p>
               {isLogin
@@ -79,7 +98,6 @@ export default function LoginPage({ onLogin }) {
             </p>
           </header>
 
-          {/* Login / registration mode selector */}
           <div className="auth-tabs">
             <button
               className={`auth-tab ${isLogin ? 'active' : ''}`}
@@ -112,7 +130,6 @@ export default function LoginPage({ onLogin }) {
               />
             </div>
 
-            {/* Email is required only when creating an account */}
             {!isLogin && (
               <div className="auth-field">
                 <label htmlFor="email">Email address</label>
@@ -130,22 +147,44 @@ export default function LoginPage({ onLogin }) {
 
             <div className="auth-field">
               <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={form.password}
-                onChange={setField('password')}
-                autoComplete={isLogin ? 'current-password' : 'new-password'}
-                required
-              />
+
+              <div className="password-input">
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={form.password}
+                  onChange={setField('password')}
+                  autoComplete={isLogin ? 'current-password' : 'new-password'}
+                  required
+                />
+
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowPassword((current) => !current)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? 'Hide' : 'Show'}
+                </button>
+              </div>
+
+              {!isLogin && (
+                <small>
+                  At least 8 characters, including one letter and one number.
+                </small>
+              )}
             </div>
 
-            {/* API errors are displayed here */}
             {error && <div className="inline-error">{error}</div>}
 
-            <button className="auth-submit" type="submit" disabled={loading}>
-              {/* Customize button text or loading message here */}
+            {success && <div className="inline-success">{success}</div>}
+
+            <button
+              className="auth-submit"
+              type="submit"
+              disabled={loading}
+            >
               {loading
                 ? 'Please wait...'
                 : isLogin
