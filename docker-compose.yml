@@ -64,6 +64,7 @@ services:
     environment:
       AUTH_SERVICE_URL: "${AUTH_SERVICE_URL}"
       QUEUE_SERVICE_URL: "${QUEUE_SERVICE_URL}"
+      QUEUE_SERVICE_WS_URL: "${QUEUE_SERVICE_WS_URL}"
       JWT_SECRET: "${JWT_SECRET}"
     ports:
       - "8080:8080"

@@ -1,6 +1,8 @@
 package com.restaurant.gateway.config;
 
-import io.jsonwebtoken.*;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
@@ -11,29 +13,26 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-import java.security.Key;
-
-/**
- * JWT Authentication Gateway Filter.
- *
- * Steps:
- *  1. Extract Bearer token from Authorization header.
- *  2. Validate signature and expiry.
- *  3. Forward X-User-Id and X-User-Role headers to downstream services.
- *  4. Reject with 401 if token is missing or invalid.
- */
 @Component
 public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Config> {
+
+    private static final String USER_ID_HEADER = "X-User-Id";
+    private static final String USER_ROLE_HEADER = "X-User-Role";
+    private static final String USERNAME_HEADER = "X-Username";
 
     @Value("${jwt.secret}")
     private String secret;
 
-    public JwtAuthFilter() { super(Config.class); }
+    public JwtAuthFilter() {
+        super(Config.class);
+    }
 
     @Override
     public GatewayFilter apply(Config config) {
         return (exchange, chain) -> {
-            String authHeader = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+            String authHeader = exchange.getRequest()
+                    .getHeaders()
+                    .getFirst(HttpHeaders.AUTHORIZATION);
 
             if (authHeader == null || !authHeader.startsWith("Bearer ")) {
                 return unauthorized(exchange);
@@ -48,24 +47,48 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
                         .parseSignedClaims(token)
                         .getPayload();
 
+                Long userId = getUserIdFromToken(claims);
                 String username = claims.getSubject();
-                String role     = claims.get("role", String.class);
+                String role = claims.get("role", String.class);
 
-                // Forward enriched headers to downstream (downstream trusts these)
-                ServerWebExchange mutatedExchange = exchange.mutate()
-                        .request(r -> r.headers(headers -> {
-                            headers.add("X-User-Id", String.valueOf(getUserIdFromToken(claims)));
-                            headers.add("X-User-Role", role);
-                            headers.add("X-Username", username);
+                if (userId == null || username == null || role == null) {
+                    return unauthorized(exchange);
+                }
+
+                ServerWebExchange authenticatedExchange = exchange.mutate()
+                        .request(request -> request.headers(headers -> {
+                            // Remove every identity header supplied by the client.
+                            headers.remove(USER_ID_HEADER);
+                            headers.remove(USER_ROLE_HEADER);
+                            headers.remove(USERNAME_HEADER);
+
+                            // Set exactly one trusted value from the verified JWT.
+                            headers.set(USER_ID_HEADER, userId.toString());
+                            headers.set(USER_ROLE_HEADER, role);
+                            headers.set(USERNAME_HEADER, username);
                         }))
                         .build();
 
-                return chain.filter(mutatedExchange);
+                return chain.filter(authenticatedExchange);
 
-            } catch (JwtException e) {
+            } catch (JwtException | IllegalArgumentException exception) {
                 return unauthorized(exchange);
             }
         };
+    }
+
+    private Long getUserIdFromToken(Claims claims) {
+        Object userId = claims.get("userId");
+
+        if (userId == null) {
+            return null;
+        }
+
+        try {
+            return Long.parseLong(userId.toString());
+        } catch (NumberFormatException exception) {
+            return null;
+        }
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange) {
@@ -73,16 +96,6 @@ public class JwtAuthFilter extends AbstractGatewayFilterFactory<JwtAuthFilter.Co
         return exchange.getResponse().setComplete();
     }
 
-    /**
-     * The JWT subject is the username. For a real user ID, you'd either:
-     * a) Embed the ID as a claim when generating the token (recommended), or
-     * b) Call the auth service to look up the user.
-     * Here we store the ID in the "sub" field via AuthService.
-     */
-    private Long getUserIdFromToken(Claims claims) {
-        Object id = claims.get("userId");
-        return id != null ? Long.parseLong(id.toString()) : 0L;
+    public static class Config {
     }
-
-    public static class Config {}
 }
