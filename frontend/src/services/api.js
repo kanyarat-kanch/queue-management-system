@@ -1,13 +1,25 @@
 const BASE = '/api'
 
-// ─── Auth helpers 
 export const getToken = () => localStorage.getItem('token')
-export const getUser = () => JSON.parse(localStorage.getItem('user') || 'null')
-export const isLoggedIn = () => !!getToken()
+
+export const getUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null')
+  } catch {
+    return null
+  }
+}
 
 export const saveAuth = (data) => {
   localStorage.setItem('token', data.token)
-  localStorage.setItem('user', JSON.stringify({ username: data.username, role: data.role }))
+  localStorage.setItem(
+    'user',
+    JSON.stringify({
+      username: data.username,
+      role: data.role,
+      userId: data.userId,
+    }),
+  )
 }
 
 export const clearAuth = () => {
@@ -15,69 +27,77 @@ export const clearAuth = () => {
   localStorage.removeItem('user')
 }
 
-// Fetch wrapper
-const req = async (method, path, body) => {
+const request = async (method, path, body) => {
   const headers = { 'Content-Type': 'application/json' }
   const token = getToken()
-  if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const res = await fetch(BASE + path, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined
-  })
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: 'เกิดข้อผิดพลาด' }))
-    throw new Error(err.error || 'เกิดข้อผิดพลาด')
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
   }
 
-  if (res.status === 204) return null
-  return res.json()
+  const response = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({
+      error: 'Something went wrong. Please try again.',
+    }))
+
+    throw new Error(error.error || 'Something went wrong. Please try again.')
+  }
+
+  if (response.status === 204) {
+    return null
+  }
+
+  return response.json()
 }
 
-// Auth API 
 export const authApi = {
-  register: (data) => req('POST', '/auth/register', data),
-  login: (data) => req('POST', '/auth/login', data),
+  register: (data) => request('POST', '/auth/register', data),
+  login: (data) => request('POST', '/auth/login', data),
 }
 
-// Queue API
 export const queueApi = {
-  getStatus: () => req('GET', '/queue/status'),
-  getMyEntry: () => req('GET', '/queue/my'),
-  takeQueue: (data) => req('POST', '/queue/take', data),
-  cancelMy: () => req('DELETE', '/queue/my'),
+  getStatus: () => request('GET', '/queue/status'),
+  getMyEntry: () => request('GET', '/queue/my'),
+  takeQueue: (data) => request('POST', '/queue/take', data),
+  cancelMy: () => request('DELETE', '/queue/my'),
 }
 
-// Staff API
 export const staffApi = {
-  getAllEntries: () => req('GET',  '/staff/queue'),
-  callNext: () => req('POST', '/staff/call-next'),
-  updateStatus: (id, status) => req('PUT',  `/staff/status/${id}?status=${status}`),
+  getAllEntries: () => request('GET', '/staff/queue'),
+  callNext: () => request('POST', '/staff/call-next'),
+  updateStatus: (id, status) => request('PUT', `/staff/status/${id}?status=${status}`),
 }
 
-// WebSocket — auto reconnect, ตรงไป queue-service
 export const createQueueSocket = (onMessage) => {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const host = window.location.hostname + ':8082'
-  let ws = null
+  let socket = null
   let destroyed = false
   let retryTimeout = null
-  let delay = 1000
+  let retryDelay = 1000
 
   const connect = () => {
-    ws = new WebSocket(`${protocol}://${host}/ws/queue`)
-    ws.onmessage = (e) => onMessage(e.data)
-    ws.onerror = () => console.warn('WebSocket error')
-    ws.onclose = () => {
-      if (destroyed) return
-      retryTimeout = setTimeout(() => {
-        delay = Math.min(delay * 2, 30000)
-        connect()
-      }, delay)
+    socket = new WebSocket(`${protocol}://${window.location.host}/ws/queue`)
+
+    socket.onmessage = () => onMessage()
+
+    socket.onopen = () => {
+      retryDelay = 1000
     }
-    ws.onopen = () => { delay = 1000 }
+
+    socket.onclose = () => {
+      if (destroyed) return
+
+      retryTimeout = window.setTimeout(() => {
+        retryDelay = Math.min(retryDelay * 2, 30000)
+        connect()
+      }, retryDelay)
+    }
   }
 
   connect()
@@ -85,8 +105,8 @@ export const createQueueSocket = (onMessage) => {
   return {
     close: () => {
       destroyed = true
-      clearTimeout(retryTimeout)
-      ws?.close()
-    }
+      window.clearTimeout(retryTimeout)
+      socket?.close()
+    },
   }
 }

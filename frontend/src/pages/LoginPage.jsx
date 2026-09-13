@@ -2,90 +2,139 @@ import { useState } from 'react'
 import { authApi, saveAuth } from '../services/api'
 
 export default function LoginPage({ onLogin }) {
-  const [mode, setMode] = useState('login')  // 'login' | 'register'
-  const [form, setForm] = useState({ username: '', email: '', password: '' })
+  const [mode, setMode] = useState('login')
+  const [form, setForm] = useState({
+    username: '',
+    email: '',
+    password: '',
+  })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+  const isLogin = mode === 'login'
 
-  const submit = async () => {
+  const setField = (field) => (event) => {
+    setForm((current) => ({ ...current, [field]: event.target.value }))
+  }
+
+  const changeMode = (nextMode) => {
+    setMode(nextMode)
+    setError('')
+  }
+
+  const submit = async (event) => {
+    event.preventDefault()
     setError('')
     setLoading(true)
+
     try {
-      const data = mode === 'login'
-        ? await authApi.login({ username: form.username, password: form.password })
+      const data = isLogin
+        ? await authApi.login({
+            username: form.username,
+            password: form.password,
+          })
         : await authApi.register(form)
+
       saveAuth(data)
-      onLogin({ username: data.username, role: data.role, userId: data.userId })
-    } catch (e) {
-      setError(e.message)
+      onLogin({
+        username: data.username,
+        role: data.role,
+        userId: data.userId,
+      })
+    } catch (requestError) {
+      setError(requestError.message)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+    <main className="auth-page">
+      <section className="auth-card">
+        <div className="auth-content">
+          <div className="restaurant-label">Chinese Restaurant</div>
 
-      {/* Logo / Header */}
-      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-        <div style={{ fontSize: 48, marginBottom: 8 }}>🏮</div>
-        <h1 style={{ fontSize: 22, fontWeight: 500, letterSpacing: '-0.3px' }}>ระบบคิวร้านอาหารจีน</h1>
-        <p style={{ fontSize: 14, color: 'var(--ink-3)', marginTop: 4 }}>Chinese Restaurant Queue System</p>
-      </div>
+          <header className="auth-heading">
+            <h1>{isLogin ? 'Welcome back' : 'Join the queue'}</h1>
+            <p>
+              {isLogin
+                ? 'Sign in to manage your queue status.'
+                : 'Create an account to get started.'}
+            </p>
+          </header>
 
-      {/* Card */}
-      <div className="card" style={{ width: '100%', maxWidth: 380 }}>
-
-        {/* Tab switcher */}
-        <div style={{ display: 'flex', border: '1px solid var(--border2)', borderRadius: 'var(--radius)', padding: 3, marginBottom: '1.5rem', background: 'var(--surface)' }}>
-          {['login', 'register'].map(m => (
-            <button key={m} onClick={() => { setMode(m); setError('') }}
-              style={{
-                flex: 1, padding: '8px', borderRadius: 7, fontSize: 14,
-                background: mode === m ? 'var(--card)' : 'transparent',
-                border: mode === m ? '1px solid var(--border2)' : 'none',
-                color: mode === m ? 'var(--ink)' : 'var(--ink-3)',
-                fontWeight: mode === m ? 500 : 400,
-              }}>
-              {m === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}
+          <div className="auth-tabs">
+            <button
+              className={`auth-tab ${isLogin ? 'active' : ''}`}
+              type="button"
+              onClick={() => changeMode('login')}
+            >
+              Sign in
             </button>
-          ))}
-        </div>
 
-        {/* Form fields */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div>
-            <label>ชื่อผู้ใช้งาน</label>
-            <input type="text" placeholder="username" value={form.username} onChange={set('username')} />
+            <button
+              className={`auth-tab ${!isLogin ? 'active' : ''}`}
+              type="button"
+              onClick={() => changeMode('register')}
+            >
+              Create account
+            </button>
           </div>
 
-          {mode === 'register' && (
-            <div>
-              <label>อีเมล</label>
-              <input type="email" placeholder="email@example.com" value={form.email} onChange={set('email')} />
+          <form className="auth-form" onSubmit={submit}>
+            <div className="auth-field">
+              <label htmlFor="username">Username</label>
+              <input
+                id="username"
+                type="text"
+                placeholder="Enter your username"
+                value={form.username}
+                onChange={setField('username')}
+                autoComplete="username"
+                required
+              />
             </div>
-          )}
 
-          <div>
-            <label>รหัสผ่าน</label>
-            <input type="password" placeholder="••••••" value={form.password} onChange={set('password')}
-              onKeyDown={(e) => e.key === 'Enter' && submit()} />
-          </div>
+            {!isLogin && (
+              <div className="auth-field">
+                <label htmlFor="email">Email address</label>
+                <input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={form.email}
+                  onChange={setField('email')}
+                  autoComplete="email"
+                  required
+                />
+              </div>
+            )}
 
-          {error && (
-            <div style={{ background: 'var(--red-lt)', color: 'var(--red-dk)', fontSize: 13, padding: '10px 14px', borderRadius: 'var(--radius)' }}>
-              {error}
+            <div className="auth-field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                placeholder="Enter your password"
+                value={form.password}
+                onChange={setField('password')}
+                autoComplete={isLogin ? 'current-password' : 'new-password'}
+                required
+              />
             </div>
-          )}
 
-          <button className="btn-primary" onClick={submit} disabled={loading} style={{ width: '100%', padding: '12px' }}>
-            {loading ? 'กำลังโหลด...' : mode === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}
-          </button>
+            {error && <div className="inline-error">{error}</div>}
+
+            <button className="auth-submit" type="submit" disabled={loading}>
+              {loading
+                ? 'Please wait...'
+                : isLogin
+                  ? 'Sign in'
+                  : 'Create account'}
+            </button>
+          </form>
         </div>
-      </div>
-
-    </div>
+      </section>
+    </main>
   )
 }

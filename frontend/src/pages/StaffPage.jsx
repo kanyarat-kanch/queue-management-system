@@ -1,37 +1,49 @@
-import { useState, useEffect, useRef } from 'react'
-import { staffApi, createQueueSocket } from '../services/api'
+import { useEffect, useRef, useState } from 'react'
+import AppHeader from '../components/AppHeader'
+import QueueBadge from '../components/QueueBadge'
+import { createQueueSocket, staffApi } from '../services/api'
 
-const STATUS_LABEL = { WAITING: 'รอคิว', CALLED: 'ถูกเรียกแล้ว', SEATED: 'นั่งโต๊ะแล้ว', CANCELLED: 'ยกเลิกแล้ว' }
-const STATUS_BADGE = { WAITING: 'badge-waiting', CALLED: 'badge-called', SEATED: 'badge-seated', CANCELLED: 'badge-cancelled' }
+const statuses = ['ALL', 'WAITING', 'CALLED', 'SEATED', 'CANCELLED']
+
+const labels = {
+  ALL: 'All',
+  WAITING: 'Waiting',
+  CALLED: 'Called',
+  SEATED: 'Seated',
+  CANCELLED: 'Cancelled',
+}
 
 export default function StaffPage({ user, onLogout }) {
-  const [entries, setEntries]     = useState([])
-  const [calling, setCalling]     = useState(false)
+  const [entries, setEntries] = useState([])
+  const [calling, setCalling] = useState(false)
   const [lastCalled, setLastCalled] = useState(null)
-  const [filter, setFilter]       = useState('WAITING')
-  const wsRef = useRef(null)
+  const [filter, setFilter] = useState('WAITING')
+  const socketRef = useRef(null)
 
   const fetchEntries = async () => {
     try {
-      const data = await staffApi.getAllEntries()
-      setEntries(data)
-    } catch (_) {}
+      setEntries(await staffApi.getAllEntries())
+    } catch {
+      setEntries([])
+    }
   }
 
   useEffect(() => {
     fetchEntries()
-    wsRef.current = createQueueSocket(fetchEntries)
-    return () => wsRef.current?.close()
+    socketRef.current = createQueueSocket(fetchEntries)
+
+    return () => socketRef.current?.close()
   }, [])
 
   const callNext = async () => {
     setCalling(true)
+
     try {
-      const data = await staffApi.callNext()
-      setLastCalled(data)
+      const entry = await staffApi.callNext()
+      setLastCalled(entry)
       fetchEntries()
-    } catch (e) {
-      alert(e.message)
+    } catch (requestError) {
+      window.alert(requestError.message)
     } finally {
       setCalling(false)
     }
@@ -41,143 +53,139 @@ export default function StaffPage({ user, onLogout }) {
     try {
       await staffApi.updateStatus(id, status)
       fetchEntries()
-    } catch (e) {
-      alert(e.message)
+    } catch (requestError) {
+      window.alert(requestError.message)
     }
   }
 
-  const counts = entries.reduce((acc, e) => {
-    acc[e.status] = (acc[e.status] || 0) + 1
-    return acc
+  const counts = entries.reduce((result, entry) => {
+    result[entry.status] = (result[entry.status] || 0) + 1
+    return result
   }, {})
 
-  const filtered = entries.filter(e => filter === 'ALL' ? true : e.status === filter)
+  const filteredEntries = entries.filter(
+    (entry) => filter === 'ALL' || entry.status === filter,
+  )
 
   return (
-    <div style={{ minHeight: '100vh', padding: '0 0 4rem' }}>
+    <main className="app-page">
+      <AppHeader user={user} onLogout={onLogout} mode="Staff dashboard" />
 
-      {/* Nav */}
-      <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)', background: 'var(--card)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 22 }}>🏮</span>
-          <span style={{ fontWeight: 500 }}>แดชบอร์ดพนักงาน</span>
-          <span style={{ fontSize: 12, background: 'var(--gold-lt)', color: 'var(--gold)', padding: '2px 10px', borderRadius: 20, fontWeight: 500 }}>
-            STAFF
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>{user.username}</span>
-          <button className="btn-secondary" onClick={onLogout} style={{ fontSize: 13, padding: '7px 14px' }}>ออกจากระบบ</button>
-        </div>
-      </nav>
+      <section className="app-main">
+        <p className="page-kicker">Dining room</p>
+        <h1 className="page-heading">Keep the room moving.</h1>
+        <p className="page-subtitle">
+          Manage arrivals and seat every guest with ease.
+        </p>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-
-        {/* Stats row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        <div className="stats-grid">
           {[
-            { label: 'รอคิว', key: 'WAITING', color: '#1A5276' },
-            { label: 'ถูกเรียกแล้ว', key: 'CALLED', color: '#7D6608' },
-            { label: 'นั่งโต๊ะแล้ว', key: 'SEATED', color: '#1E8449' },
-            { label: 'ยกเลิก', key: 'CANCELLED', color: 'var(--ink-3)' },
-          ].map(s => (
-            <div key={s.key} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '1rem', textAlign: 'center' }}>
-              <p style={{ fontSize: 28, fontWeight: 500, color: s.color, fontFamily: 'IBM Plex Mono, monospace' }}>
-                {counts[s.key] || 0}
-              </p>
-              <p style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>{s.label}</p>
-            </div>
+            ['WAITING', 'stat-gold'],
+            ['CALLED', 'stat-red'],
+            ['SEATED', 'stat-green'],
+            ['CANCELLED', 'stat-muted'],
+          ].map(([status, colorClass]) => (
+            <article className="stat-card" key={status}>
+              <p className={`stat-number ${colorClass}`}>{counts[status] || 0}</p>
+              <p className="stat-label">{labels[status]}</p>
+            </article>
           ))}
         </div>
 
-        {/* Call next + last called */}
-        <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-          <button className="btn-primary" onClick={callNext} disabled={calling || !counts['WAITING']}
-            style={{ flex: 1, padding: '18px', fontSize: 16 }}>
-            {calling ? 'กำลังเรียก...' : `เรียกคิวถัดไป ${counts['WAITING'] ? `(${counts['WAITING']} คิวรออยู่)` : '(ไม่มีคิว)'}`}
+        <section className="next-call-panel">
+          <div>
+            <p className="page-kicker">Queue control</p>
+            <h2>Ready for the next party?</h2>
+            <p>
+              {counts.WAITING || 0} party{counts.WAITING === 1 ? '' : 'ies'} currently waiting.
+            </p>
+          </div>
+
+          <button
+            className="primary-action"
+            onClick={callNext}
+            disabled={calling || !counts.WAITING}
+          >
+            {calling ? 'Calling...' : 'Call next party'}
           </button>
+        </section>
 
-          {lastCalled && (
-            <div className="card" style={{ minWidth: 180, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', borderLeft: '4px solid var(--gold)' }}>
-              <p style={{ fontSize: 12, color: 'var(--ink-3)', marginBottom: 4 }}>เรียกล่าสุด</p>
-              <p className="mono" style={{ fontSize: 36, fontWeight: 500, color: 'var(--gold)', lineHeight: 1 }}>
-                {String(lastCalled.queueNumber).padStart(3, '0')}
-              </p>
-              <p style={{ fontSize: 13, marginTop: 6 }}>{lastCalled.customerName}</p>
+        {lastCalled && (
+          <section className="last-called">
+            <span>Last called</span>
+            <strong>{String(lastCalled.queueNumber).padStart(3, '0')}</strong>
+            <span>{lastCalled.customerName}</span>
+          </section>
+        )}
+
+        <section className="content-panel staff-panel">
+          <header className="panel-header">
+            <div>
+              <h2>Queue overview</h2>
+              <p>{filteredEntries.length} entries shown</p>
             </div>
-          )}
-        </div>
-
-        {/* Filter tabs */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {[['ALL', 'ทั้งหมด'], ['WAITING', 'รอคิว'], ['CALLED', 'ถูกเรียก'], ['SEATED', 'นั่งโต๊ะ'], ['CANCELLED', 'ยกเลิก']].map(([k, label]) => (
-            <button key={k} onClick={() => setFilter(k)}
-              style={{
-                fontSize: 13, padding: '6px 14px',
-                background: filter === k ? 'var(--red)' : 'var(--card)',
-                color: filter === k ? '#fff' : 'var(--ink-2)',
-                border: '1px solid var(--border2)',
-                borderRadius: 20,
-              }}>
-              {label} {k !== 'ALL' && counts[k] ? `(${counts[k]})` : ''}
+            <button className="refresh-button" onClick={fetchEntries}>
+              Refresh
             </button>
-          ))}
-          <button className="btn-secondary" onClick={fetchEntries} style={{ fontSize: 13, padding: '6px 14px', marginLeft: 'auto' }}>
-            รีเฟรช
-          </button>
-        </div>
+          </header>
 
-        {/* Entry list */}
-        <div className="card" style={{ padding: '0.5rem' }}>
-          {filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--ink-3)' }}>ไม่มีรายการ</div>
+          <div className="filter-bar">
+            {statuses.map((status) => (
+              <button
+                className={`filter-button ${filter === status ? 'active' : ''}`}
+                key={status}
+                onClick={() => setFilter(status)}
+              >
+                {labels[status]}
+              </button>
+            ))}
+          </div>
+
+          {filteredEntries.length === 0 ? (
+            <div className="empty-state">No queue entries found.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {filtered.map((entry, i) => (
-                <div key={entry.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '12px 14px',
-                  borderBottom: i < filtered.length - 1 ? '1px solid var(--border)' : 'none'
-                }}>
-                  {/* Queue number */}
-                  <span className="mono" style={{ fontSize: 24, fontWeight: 500, color: 'var(--red)', minWidth: 52 }}>
+            <div className="queue-list">
+              {filteredEntries.map((entry) => (
+                <div className="queue-row staff-row" key={entry.id}>
+                  <span className="queue-number">
                     {String(entry.queueNumber).padStart(3, '0')}
                   </span>
 
-                  {/* Info */}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                      <span style={{ fontSize: 14, fontWeight: 500 }}>{entry.customerName}</span>
-                      <span className={`badge ${STATUS_BADGE[entry.status]}`}>{STATUS_LABEL[entry.status]}</span>
-                    </div>
-                    <p style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-                      {entry.partySize} คน
-                      {entry.notes && ` · ${entry.notes}`}
-                      {entry.createdAt && ` · ${new Date(entry.createdAt).toLocaleTimeString('th-TH')}`}
-                    </p>
+                  <div className="queue-row-info">
+                    <p>{entry.customerName}</p>
+                    <span>
+                      Party of {entry.partySize}
+                      {entry.notes ? ` · ${entry.notes}` : ''}
+                    </span>
                   </div>
 
-                  {/* Action buttons */}
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <QueueBadge status={entry.status} />
+
+                  <div className="staff-actions">
                     {entry.status === 'WAITING' && (
-                      <button className="btn-secondary"
+                      <button
+                        className="small-button"
                         onClick={() => updateStatus(entry.id, 'CALLED')}
-                        style={{ fontSize: 12, padding: '6px 12px' }}>
-                        เรียก
+                      >
+                        Call
                       </button>
                     )}
+
                     {entry.status === 'CALLED' && (
-                      <button className="btn-gold"
+                      <button
+                        className="small-button"
                         onClick={() => updateStatus(entry.id, 'SEATED')}
-                        style={{ fontSize: 12, padding: '6px 12px' }}>
-                        นั่งโต๊ะแล้ว
+                      >
+                        Seat
                       </button>
                     )}
+
                     {(entry.status === 'WAITING' || entry.status === 'CALLED') && (
-                      <button className="btn-secondary"
+                      <button
+                        className="small-button danger-button"
                         onClick={() => updateStatus(entry.id, 'CANCELLED')}
-                        style={{ fontSize: 12, padding: '6px 12px', color: 'var(--red)' }}>
-                        ยกเลิก
+                      >
+                        Cancel
                       </button>
                     )}
                   </div>
@@ -185,9 +193,8 @@ export default function StaffPage({ user, onLogout }) {
               ))}
             </div>
           )}
-        </div>
-
-      </div>
-    </div>
+        </section>
+      </section>
+    </main>
   )
 }

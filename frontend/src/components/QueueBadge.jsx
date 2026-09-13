@@ -1,13 +1,13 @@
 const labels = {
-  WAITING: 'รอคิว',
-  CALLED: 'เรียกแล้ว',
-  SEATED: 'รับโต๊ะ',
-  CANCELLED: 'ยกเลิก',
+  WAITING: 'Waiting',
+  CALLED: 'Called',
+  SEATED: 'Seated',
+  CANCELLED: 'Cancelled',
 }
 
 export default function QueueBadge({ status }) {
   return (
-    <span className={`badge badge-${status?.toLowerCase()}`}>
+    <span className={`queue-badge queue-badge-${status?.toLowerCase()}`}>
       {labels[status] ?? status}
     </span>
   )
