@@ -1,33 +1,39 @@
 spring:
   application:
+    # Service name shown in logs and Spring application metadata.
     name: api-gateway
+
   cloud:
     gateway:
       routes:
-        # ── Auth Service routes (no JWT required) ──────────────────
+        # Public authentication routes.
+        # Users can register and sign in without a JWT.
         - id: auth-service
-          uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+          uri: ${AUTH_SERVICE_URL}
           predicates:
             - Path=/api/auth/**
 
-        # ── Queue Service: public status endpoint (no JWT required) ─
+        # Public queue board.
+        # Anyone can view the currently waiting queue.
         - id: queue-status-public
-          uri: ${QUEUE_SERVICE_URL:http://localhost:8082}
+          uri: ${QUEUE_SERVICE_URL}
           predicates:
             - Path=/api/queue/status
             - Method=GET
 
-        # ── Queue Service: customer endpoints (JWT required)
+        # Customer queue routes.
+        # The gateway validates the JWT before forwarding the request.
         - id: queue-service
-          uri: ${QUEUE_SERVICE_URL:http://localhost:8082}
+          uri: ${QUEUE_SERVICE_URL}
           predicates:
             - Path=/api/queue/**
           filters:
             - name: JwtAuthFilter
 
-        # ── Queue Service: staff endpoints (JWT + STAFF role)
+        # Staff-only queue routes.
+        # The gateway validates the JWT and requires the STAFF role.
         - id: staff-service
-          uri: ${QUEUE_SERVICE_URL:http://localhost:8082}
+          uri: ${QUEUE_SERVICE_URL}
           predicates:
             - Path=/api/staff/**
           filters:
@@ -36,14 +42,13 @@ spring:
               args:
                 requiredRole: STAFF
 
-        # ── WebSocket passthrough
-        - id: websocket
-          uri: ws://queue-service:8082
+        # WebSocket route for real-time queue notifications.
+        # A ws:// URI is required for WebSocket upgrade requests.
+        - id: queue-websocket
+          uri: ${QUEUE_SERVICE_WS_URL}
           predicates:
             - Path=/ws/**
 
-      # ✅ เพิ่มตรงนี้ — บอก Gateway ให้รู้ว่ามี WebSocket
-      websocket-path-prefix-enabled: true
-
 jwt:
-  secret: ${JWT_SECRET:your-super-secret-key-change-this-in-production-min-256-bits}
+  # Shared secret used to validate tokens created by Auth Service.
+  secret: ${JWT_SECRET}
