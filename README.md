@@ -1,280 +1,260 @@
-# 🥢 Restaurant Queue Management System
+# Red Lantern Restaurant Queue Management System
 
-A microservices-based queue management system built with Java 17, Spring Boot, Spring Cloud Gateway, MySQL, Docker, and WebSocket.
+A restaurant queue management system built with Java, Spring Boot, React, MySQL, Docker Compose, JWT authentication, and WebSocket updates.
 
-## Tech Stack
+The application supports two user roles:
+
+- **Customer** — joins the waiting queue, checks queue status, and cancels their own queue entry.
+- **Staff** — monitors all queue entries, calls the next party, and updates queue statuses.
+
+---
+
+## Features
+
+### Customer Features
+
+- Create an account and sign in.
+- Join the restaurant queue.
+- Enter a party size and optional special notes.
+- View the current waiting list.
+- View a personal queue ticket and number of parties ahead.
+- Cancel a waiting queue entry.
+- Receive live queue refreshes through WebSocket notifications.
+
+### Staff Features
+
+- Sign in with a `STAFF` account.
+- View all queue entries.
+- Filter entries by status.
+- Call the next waiting party.
+- Mark a called party as seated.
+- Cancel a waiting or called queue entry.
+- View queue statistics for waiting, called, seated, and cancelled entries.
+
+---
+
+## Technology Stack
 
 | Layer | Technology |
-|-------|-----------|
-| Language | Java 21 |
-| Framework | Spring Boot 3.2.0 |
-| Gateway | Spring Cloud Gateway |
-| Security | Spring Security + JWT (jjwt) |
+|---|---|
+| Backend language | Java 21 |
+| Backend framework | Spring Boot 3.2.0 |
+| API gateway | Spring Cloud Gateway 2023.0.0 |
+| Authentication | Spring Security and JWT |
+| JWT library | JJWT 0.12.3 |
 | Database | MySQL 8 |
-| Real-time | Spring WebSocket (STOMP) |
-| Container | Docker + Docker Compose |
-| Build | Maven |
-| Frontend | React 18 + Vite |
+| Data access | Spring Data JPA and Hibernate |
+| Real-time updates | Native Spring WebSocket |
+| Frontend | React 18 and Vite 5 |
+| Build tool | Maven |
+| Containers | Docker and Docker Compose |
 
-## 📐 System Architecture
+> The project uses native WebSocket messages. It does not use STOMP.
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   React Frontend                     │
-│         (Customer Portal + Staff Dashboard)          │
-└───────────────────────┬─────────────────────────────┘
-                        │ HTTP / WebSocket
-                        ▼
-┌─────────────────────────────────────────────────────┐
-│               API Gateway (Port 8080)               │
-│            spring-cloud-gateway                     │
-│   Route: /api/auth/**  → Auth Service (8081)        │
-│   Route: /api/queue/** → Queue Service (8082)       │
-│   Route: /ws/**        → Queue Service (8082)       │
-└───────────┬─────────────────────┬───────────────────┘
-            │                     │
-            ▼                     ▼
-┌──────────────────┐   ┌─────────────────────────┐
-│   Auth Service   │   │     Queue Service        │
-│   (Port 8081)    │   │     (Port 8082)          │
-│                  │   │                          │
-│ - Register       │   │ - Take queue number      │
-│ - Login / JWT    │   │ - View queue status      │
-│ - Validate token │   │ - Call next (staff)      │
-│                  │   │ - Update status (staff)  │
-│   MySQL DB       │   │ - WebSocket broadcast    │
-│   (auth_db)      │   │                          │
-└──────────────────┘   │   MySQL DB (queue_db)    │
-                       └─────────────────────────┘
+---
+
+## Architecture
+
+```text
+Browser
+  │
+  │ HTTP / WebSocket
+  ▼
+Frontend (React + Vite)
+  │
+  │ /api and /ws proxy
+  ▼
+API Gateway :8080
+  ├── /api/auth/**  → Auth Service
+  ├── /api/queue/** → Queue Service
+  ├── /api/staff/** → Queue Service
+  └── /ws/**        → Queue Service WebSocket
+          │
+          ├──────────────────────┐
+          ▼                      ▼
+Auth Service :8081         Queue Service :8082
+          │                      │
+          └──────────┬───────────┘
+                     ▼
+          MySQL 8: restaurant_db
+              ├── users
+              └── queue_entries
 ```
 
 ---
 
-Folder Structure
+## User Roles
 
-```
-chinese-restaurant-queue/
-├── docker-compose.yml
-├── README.md
-│
-├── api-gateway/
-│   ├── Dockerfile
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/restaurant/gateway/
-│       │   ├── GatewayApplication.java
-│       │   └── config/
-│       │       ├── GatewayConfig.java
-│       │       └── JwtAuthFilter.java
-│       └── resources/
-│           └── application.yml
-│
-├── auth-service/
-│   ├── Dockerfile
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/restaurant/auth/
-│       │   ├── AuthApplication.java
-│       │   ├── controller/
-│       │   │   └── AuthController.java
-│       │   ├── service/
-│       │   │   ├── AuthService.java
-│       │   │   └── JwtService.java
-│       │   ├── model/
-│       │   │   ├── User.java
-│       │   │   └── Role.java (enum)
-│       │   ├── repository/
-│       │   │   └── UserRepository.java
-│       │   ├── dto/
-│       │   │   ├── RegisterRequest.java
-│       │   │   ├── LoginRequest.java
-│       │   │   └── AuthResponse.java
-│       │   ├── config/
-│       │   │   └── SecurityConfig.java
-│       │   └── exception/
-│       │       └── GlobalExceptionHandler.java
-│       └── resources/
-│           └── application.yml
-│
-├── queue-service/
-│   ├── Dockerfile
-│   ├── pom.xml
-│   └── src/main/
-│       ├── java/com/restaurant/queue/
-│       │   ├── QueueApplication.java
-│       │   ├── controller/
-│       │   │   ├── QueueController.java
-│       │   │   └── StaffController.java
-│       │   ├── service/
-│       │   │   └── QueueService.java
-│       │   ├── model/
-│       │   │   ├── QueueEntry.java
-│       │   │   └── QueueStatus.java (enum)
-│       │   ├── repository/
-│       │   │   └── QueueRepository.java
-│       │   ├── dto/
-│       │   │   ├── TakeQueueRequest.java
-│       │   │   └── QueueResponse.java
-│       │   ├── websocket/
-│       │   │   ├── WebSocketConfig.java
-│       │   │   └── QueueWebSocketHandler.java
-│       │   ├── config/
-│       │   │   └── SecurityConfig.java
-│       │   └── exception/
-│       │       └── GlobalExceptionHandler.java
-│       └── resources/
-│           └── application.yml
-│
-└── frontend/ (optional React app)
-    ├── package.json
-    └── src/
-        ├── App.jsx
-        ├── pages/
-        │   ├── CustomerPage.jsx
-        │   └── StaffPage.jsx
-        └── services/
-            └── api.js
+| Role | Created by | Available actions |
+|---|---|---|
+| `CUSTOMER` | Public registration | Join queue, view queue status, view own entry, cancel own waiting entry |
+| `STAFF` | Staff seed configuration | View all queue entries, call next party, update queue status |
+
+All accounts created through the registration form receive the `CUSTOMER` role.
+
+A staff account can be created automatically when the Auth Service starts. Its credentials are read from the `.env` file.
+
+---
+
+## Queue Statuses
+
+| Status | Meaning |
+|---|---|
+| `WAITING` | The customer is waiting for a table. |
+| `CALLED` | Staff has called the customer. |
+| `SEATED` | The customer has been seated. |
+| `CANCELLED` | The customer or staff cancelled the queue entry. |
+
+```text
+WAITING → CALLED → SEATED
+WAITING → CANCELLED
+CALLED  → CANCELLED
 ```
 
 ---
 
-## Database Schema
+## Database
 
-### auth_db
+The project uses one MySQL database named `restaurant_db`.
 
-```sql
-CREATE DATABASE IF NOT EXISTS auth_db;
-USE auth_db;
+| Table | Description |
+|---|---|
+| `users` | Stores customer and staff accounts. |
+| `queue_entries` | Stores restaurant queue entries. |
 
-CREATE TABLE users (
-    id          BIGINT AUTO_INCREMENT PRIMARY KEY,
-    username    VARCHAR(50) NOT NULL UNIQUE,
-    email       VARCHAR(100) NOT NULL UNIQUE,
-    password    VARCHAR(255) NOT NULL, -- BCrypt hashed
-    role        ENUM('CUSTOMER', 'STAFF') NOT NULL DEFAULT 'CUSTOMER',
-    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+Hibernate creates or updates these tables automatically when the services start.
+
+---
+
+## API Endpoints
+
+Base URL:
+
+```text
+http://localhost:8080
 ```
 
-### queue_db
+### Authentication
 
-```sql
-CREATE DATABASE IF NOT EXISTS queue_db;
-USE queue_db;
+| Method | Endpoint | Authentication | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Public | Create a customer account |
+| `POST` | `/api/auth/login` | Public | Sign in and receive a JWT |
 
-CREATE TABLE queue_entries (
-    id              BIGINT AUTO_INCREMENT PRIMARY KEY,
-    queue_number    INT NOT NULL UNIQUE,
-    customer_id     BIGINT NOT NULL,            -- references auth_db users.id
-    customer_name   VARCHAR(100) NOT NULL,
-    party_size      INT NOT NULL DEFAULT 1,
-    status          ENUM('WAITING', 'CALLED', 'SEATED', 'CANCELLED') NOT NULL DEFAULT 'WAITING',
-    notes           TEXT,
-    created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    called_at       DATETIME,
-    seated_at       DATETIME,
-    INDEX idx_status (status),
-    INDEX idx_queue_number (queue_number),
-    INDEX idx_customer_id (customer_id)
-);
+### Customer Queue API
+
+| Method | Endpoint | Authentication | Description |
+|---|---|---|---|
+| `GET` | `/api/queue/status` | Public | View waiting queue entries |
+| `POST` | `/api/queue/take` | JWT | Join the queue |
+| `GET` | `/api/queue/my` | JWT | View the current user's queue entry |
+| `DELETE` | `/api/queue/my` | JWT | Cancel the current user's queue entry |
+
+### Staff Queue API
+
+| Method | Endpoint | Authentication | Description |
+|---|---|---|---|
+| `GET` | `/api/staff/queue` | JWT + `STAFF` | View all queue entries |
+| `POST` | `/api/staff/call-next` | JWT + `STAFF` | Call the first waiting party |
+| `PUT` | `/api/staff/status/{id}?status=SEATED` | JWT + `STAFF` | Update a queue entry status |
+
+---
+
+## WebSocket Updates
+
+The Queue Service broadcasts an update whenever queue data changes.
+
+| Environment | WebSocket URL |
+|---|---|
+| Frontend through Vite proxy | `ws://localhost:3000/ws/queue` |
+| Direct API Gateway connection | `ws://localhost:8080/ws/queue` |
+
+---
+
+## Environment Configuration
+
+Create a `.env` file in the project root:
+
+```env
+STAFF_SEED_ENABLED=true
+STAFF_SEED_USERNAME=staff
+STAFF_SEED_EMAIL=staff@redlantern.local
+STAFF_SEED_PASSWORD=change-this-password
+```
+
+The Auth Service creates this staff account only if the username does not already exist.
+
+Do not commit `.env` to Git.
+
+---
+
+## Run with Docker Compose
+
+### Requirements
+
+- Docker Desktop
+- Docker Compose
+
+### Start the application
+
+```powershell
+cd D:\queue-management-system-main
+docker compose up --build
+```
+
+### Open the application
+
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| API Gateway | http://localhost:8080 |
+| MySQL | `127.0.0.1:3310` |
+
+### Stop the application
+
+```powershell
+docker compose down
+```
+
+### Delete all Docker database data
+
+```powershell
+docker compose down -v
+```
+
+> Warning: this permanently deletes local MySQL data created by Docker.
+
+---
+
+## MySQL Workbench Connection
+
+```text
+Connection Name: Red Lantern Docker
+Connection Method: Standard (TCP/IP)
+Hostname: 127.0.0.1
+Port: 3310
+Username: restaurant_user
+Password: restaurant_pass
+Default Schema: restaurant_db
+```
+
+For root access:
+
+```text
+Hostname: 127.0.0.1
+Port: 3310
+Username: root
+Password: root
+Default Schema: restaurant_db
 ```
 
 ---
 
-## 🔌 REST API Design
+## Development Notes
 
-### Auth Service (`/api/auth`)
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/api/auth/register` | None | Register new account |
-| POST | `/api/auth/login` | None | Login, receive JWT |
-| GET | `/api/auth/me` | JWT | Get current user info |
-
-### Queue Service (`/api/queue`) — Customer
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/api/queue/take` | JWT (CUSTOMER) | Take a queue number |
-| GET | `/api/queue/status` | JWT | View full queue |
-| GET | `/api/queue/my` | JWT (CUSTOMER) | My current queue entry |
-| DELETE | `/api/queue/my` | JWT (CUSTOMER) | Cancel my queue entry |
-
-### Queue Service (`/api/staff`) — Staff
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| POST | `/api/staff/call-next` | JWT (STAFF) | Call the next queue number |
-| PUT | `/api/staff/status/{id}` | JWT (STAFF) | Update queue entry status |
-| GET | `/api/staff/queue` | JWT (STAFF) | View all entries |
-
-### WebSocket
-
-| Endpoint | Description |
-|----------|-------------|
-| `ws://localhost:8080/ws/queue` | Live queue updates (broadcast to all) |
-
----
-
-## 🔐 JWT Authentication Flow
-
-```
-1. Client → POST /api/auth/login { username, password }
-2. Auth Service verifies credentials against auth_db
-3. Auth Service → returns { token: "eyJ...", role: "CUSTOMER" }
-4. Client stores token in localStorage / memory
-5. Client → GET /api/queue/status
-         Headers: Authorization: Bearer eyJ...
-6. API Gateway intercepts request
-7. Gateway validates JWT signature using shared secret
-8. Gateway extracts role claim, forwards X-User-Id and X-User-Role headers
-9. Queue Service trusts these headers (no re-validation needed)
-10. Queue Service returns data
-```
-
----
-
-## 🐳 Docker Compose
-
-See `docker-compose.yml` in project root.
-
-Services:
-- `mysql-auth` — MySQL 8 for auth_db (port 3306)
-- `mysql-queue` — MySQL 8 for queue_db (port 3307)
-- `auth-service` — Spring Boot (port 8081)
-- `queue-service` — Spring Boot (port 8082)
-- `api-gateway` — Spring Cloud Gateway (port 8080)
-
----
-
-## 🚀 Quick Start
-
-```bash
-# Build all services
-./mvnw clean package -DskipTests
-
-# Start everything
-docker-compose up --build
-
-# Access
-# API Gateway: http://localhost:8080
-# WebSocket:   ws://localhost:8080/ws/queue
-```
-
----
-
-## 🔑 Key Technologies
-
-| Layer | Technology |
-|-------|-----------|
-| Language | Java 17 |
-| Framework | Spring Boot 3.x |
-| Gateway | Spring Cloud Gateway |
-| Security | Spring Security + JWT (jjwt) |
-| Database | MySQL 8 |
-| Real-time | Spring WebSocket (STOMP) |
-| Container | Docker + Docker Compose |
-| Build | Maven |
-| Frontend | React 18 + Vite (optional) |
-
+- The frontend runs on Vite port `3000`.
+- The frontend proxies `/api` and `/ws` requests to the API Gateway.
+- Frontend changes trigger hot reload inside Docker.
+- Registration always creates a `CUSTOMER` account.
+- Staff accounts are configured through `.env`.
+- Java services use Java 21.
